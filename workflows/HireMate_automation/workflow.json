@@ -1,0 +1,1234 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {},
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -112,
+        -48
+      ],
+      "id": "c5002e44-2aab-4248-9e50-36bcb647eb1b",
+      "name": "Gmail Trigger",
+      "alwaysOutputData": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "yC1MzgF5TBPouvnH",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}",
+        "simple": false,
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        880,
+        16
+      ],
+      "id": "7d6f6581-8e36-4173-b391-14aba22f27d7",
+      "name": "Get a message",
+      "webhookId": "7e092622-b411-4263-9ed4-da51bd6cdec5",
+      "alwaysOutputData": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "yC1MzgF5TBPouvnH",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "attachment_0",
+        "name": "={{ $json.from.value[0].name }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "19vIE74Ja02XTynleN_xroXNbKCUDtDO2",
+          "mode": "list",
+          "cachedResultName": "Resume",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/19vIE74Ja02XTynleN_xroXNbKCUDtDO2"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1312,
+        -96
+      ],
+      "id": "4dd60054-a2a8-4b67-a25b-03f88862514f",
+      "name": "Upload file",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "PM4nNT5uZyVKUUhk",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=\"From the following resume text:{{ $json.text }}  extract and return results in JSON format with these fields:\n\nfull_name\n\nemail\n\nphone_number\n\nportfolio_link\n\ngithub_url\n\nlinkedin_url\n\nlocation (city, state, country if available)\n\ncurrent_company (with company_name, job_title, start_date, end_date or 'Present')\n\nprevious_companies (array of {company_name, job_title, start_date, end_date})\n\ntotal_experience (calculated in years/months from work history dates)\n\ncore_skills (list of main technical/soft skills)\n\neducation (degree, institution, year if available)\n\nAdditionally, check if the resume matches the following job description: 'I am looking for a MERN stack developer who has 1+ years of experience in MERN stack technologies and good knowledge of Node.js backend'.\n\nReturn an extra field job_match with a boolean value: true if the candidate fits the description, otherwise false.\n\nIf any field is missing, return null. Dates must be in YYYY-MM format.\"",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1488,
+        64
+      ],
+      "id": "3810ef19-f43f-4dea-a115-1f500d0b9649",
+      "name": "AI Agent",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1488,
+        224
+      ],
+      "id": "08e5946b-b401-4fa9-8c17-17b8a65509a7",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "gjTRGbTZ19XxMc1J",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "attachment_0",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        160
+      ],
+      "id": "8b2fc586-5e0e-4804-ae87-a30315899467",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Robustly extract JSON object from an AI string like \"```json ... ```\"\n// Handles stray code fences, trailing commas, extra text after the JSON, etc.\n\nfunction extractJsonObject(str = '') {\n  let t = String(str).trim();\n\n  // Strip code fences anywhere\n  t = t.replace(/```json/gi, '').replace(/```/g, '').trim();\n\n  // Grab the first {...} block\n  const m = t.match(/\\{[\\s\\S]*\\}/);\n  if (!m) throw new Error('No JSON object found in output');\n  t = m[0];\n\n  // Remove trailing commas before } or ]  (common LLM issue)\n  t = t.replace(/,\\s*([}\\]])/g, '$1');\n\n  // Parse\n  return JSON.parse(t);\n}\n\nconst raw = $json.output ?? '';\nconst data = extractJsonObject(raw);\n\n// Use the Drive link that came from the other branch via Merge (NOT $node[…])\nconst resumeURL = $json.ResumeURL || '';\n\n// Build friendly fields\nconst location = [\n  data.location?.city,\n  data.location?.state,\n  data.location?.country,\n].filter(Boolean).join(', ');\n\nconst education = data.education\n  ? [data.education.degree, data.education.institution, data.education.year]\n      .filter(Boolean).join(' — ')\n  : '';\n\nconst skills = Array.isArray(data.core_skills) ? data.core_skills.join('; ') : '';\nconst EmailKey = (data.email || '').toLowerCase().trim();\nconst NameKey  = (data.full_name || '').toLowerCase().replace(/\\s+/g,' ').trim();\n\nreturn {\n  json: {\n    Name: data.full_name ?? '',\n    Email: data.email ?? '',\n    Phone: data.phone_number ?? '',\n    Portfolio: data.portfolio_link ?? '',\n    GitHub: data.github_url ?? '',\n    LinkedIn: data.linkedin_url ?? '',\n    Location: location,\n    CurrentCompany: data.current_company?.company_name ?? '',\n    TotalExperience: data.total_experience ?? '',\n    Skills: skills,\n    Education: education,\n    ResumeURL: resumeURL,\n    CreatedAt: new Date().toISOString(),\n    Status: 'NEW',\n    MatchStatus: data.job_match ?? '',\n    EmailKey,\n    NameKey\n    \n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        64
+      ],
+      "id": "ff89fde8-83ea-4ed7-92a6-91a29e97d4e0",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1oHCCAkOd20G-d4cSa5kr29IjUKwL4LerEKqLjddF5Ac",
+          "mode": "list",
+          "cachedResultName": "Resume Spreadsheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1oHCCAkOd20G-d4cSa5kr29IjUKwL4LerEKqLjddF5Ac/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1oHCCAkOd20G-d4cSa5kr29IjUKwL4LerEKqLjddF5Ac/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email": "={{ $json.Email }}",
+            "Name": "={{ $json.Name }}",
+            "Phone": "={{ $json.Phone }}",
+            "Location": "={{ $json.Location }}",
+            "Education": "={{ $json.Education }}",
+            "Skills": "={{ $json.Skills }}",
+            "Current company": "={{ $json.CurrentCompany }}",
+            "TotalExperience": "={{ $json.TotalExperience }}",
+            "Status": "={{ $json.MatchStatus }}",
+            "NameKey": "={{ $json.Name }}",
+            "EmailKey": "={{ $json.Email }}"
+          },
+          "matchingColumns": [
+            "Email"
+          ],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Location",
+              "displayName": "Location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Education",
+              "displayName": "Education",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Skills",
+              "displayName": "Skills",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PreviousCompany",
+              "displayName": "PreviousCompany",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current company",
+              "displayName": "Current company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "TotalExperience",
+              "displayName": "TotalExperience",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NameKey",
+              "displayName": "NameKey",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "EmailKey",
+              "displayName": "EmailKey",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2448,
+        64
+      ],
+      "id": "19c54e7c-51de-4e83-b4e6-918c8a1268f6",
+      "name": "Append or update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "tBqTKIlUOrAK4lWl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.text }} according to the inqury just create a reply message only text message",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        528,
+        288
+      ],
+      "id": "3029a116-bc60-4997-a6ef-2ff3541dbe8a",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        528,
+        464
+      ],
+      "id": "d1ccc902-1715-4d2e-9ea9-9313062eb72d",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "gjTRGbTZ19XxMc1J",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Gmail Trigger').item.json.id }}",
+        "message": "={{ $json.output }}",
+        "options": {
+          "replyToSenderOnly": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        880,
+        288
+      ],
+      "id": "99685eef-0881-4c0a-b97c-5cfb00661b94",
+      "name": "Reply to a message",
+      "webhookId": "62ac8e61-993c-4359-bc21-a31f53ac2c2e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "yC1MzgF5TBPouvnH",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cdf4e3c8-9bb1-40fe-aee1-2e52c48df638",
+              "leftValue": "={{ $json.MatchStatus }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2032,
+        256
+      ],
+      "id": "3f2b4184-ac9a-4c0a-8a36-eac5047bb1f5",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Get a message').item.json.id }}",
+        "emailType": "text",
+        "message": "=Hi {{ $json.Email }},\n\nThank you for applying for this position. I’m glad to inform you that you have been shortlisted for the next stage of the process.\n\nCould you please reply to this email with your availability for an HR interview (Monday to Friday, between 9:00 AM and 6:00 PM)? The interview will be conducted on Google Meet.\n\nLooking forward to your response.\n\nBest regards,\nAvntika\nHr\nImpactmindz-tech solutions",
+        "options": {
+          "replyToSenderOnly": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2304,
+        240
+      ],
+      "id": "ff6ea9d9-7ad6-482d-b92b-9051a498c771",
+      "name": "Reply to a message1",
+      "webhookId": "9733cfd8-cf9a-4fa4-a6e2-756d7737c832",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "yC1MzgF5TBPouvnH",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.subject }}",
+                    "rightValue": "Re",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "2be80239-5a79-464b-b0d1-ce9a5f136a7d"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "8743caf6-40f3-412c-aae7-306947b3429d",
+                    "leftValue": "={{ $json.subject }}",
+                    "rightValue": "Apply",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "97cb72b6-2b5d-41f2-8393-3f8a42aa9c97",
+                    "leftValue": "={{ $json.subject }}",
+                    "rightValue": "Apply",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notContains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "db62fa8b-87bf-4934-943f-9e450c32ae6c",
+                    "leftValue": "={{ $json.subject }}",
+                    "rightValue": "re",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notContains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        96,
+        -48
+      ],
+      "id": "d94b09f5-6eec-45ad-af8d-d536f2aeff7f",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}"
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        304,
+        -256
+      ],
+      "id": "a096cf6b-d083-426c-b77c-cdb7cd0ce2a0",
+      "name": "Get a message1",
+      "webhookId": "a7d80c87-2149-4f97-a84b-368e97882af2",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "yC1MzgF5TBPouvnH",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.snippet }} \njust extract and analyze is the user available for the meeting if yes then if it will give any time then also extracted the time other wise just return available yes or no  and if it mention the time then also extract it  just make two json key one for available and one for time and proper json format and if it show anytime then suggest a time of half hour between 9am to 6pm  between mon-friday time with date in a format which format can use in the google calender and dont give the past time always give the ahead time if the current time is more than 6 pm then schecdule on next day between 9am to 6pm\nand also give the end time and  half hour  is the time for meeting\ngive starting time and ending time in seprate\n\n",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        512,
+        -256
+      ],
+      "id": "39531721-f682-42da-82cd-32837aea5350",
+      "name": "AI Agent2"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        512,
+        -96
+      ],
+      "id": "4fc41fb2-29a3-45bb-9d4e-75cda212dd49",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "gjTRGbTZ19XxMc1J",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseLooseJson(input) {\n  let t = String(input ?? \"\").trim();\n\n  // Strip code fences\n  t = t.replace(/```json/gi, \"\").replace(/```/g, \"\").trim();\n\n  // Keep the largest {...} or [...] block\n  const sObj = t.indexOf(\"{\"), eObj = t.lastIndexOf(\"}\");\n  const sArr = t.indexOf(\"[\"), eArr = t.lastIndexOf(\"]\");\n  if (sObj !== -1 && eObj !== -1 && eObj > sObj) {\n    t = t.slice(sObj, eObj + 1);\n  } else if (sArr !== -1 && eArr !== -1 && eArr > sArr) {\n    t = t.slice(sArr, eArr + 1);\n  }\n\n  // Remove trailing commas before } or ]\n  t = t.replace(/,\\s*([}\\]])/g, \"$1\");\n\n  // Count specific characters without regex\n  const countChar = (s, ch) => {\n    let n = 0;\n    for (let i = 0; i < s.length; i++) if (s[i] === ch) n++;\n    return n;\n  };\n\n  // Balance braces/brackets if AI output is truncated\n  const braceDiff = countChar(t, \"{\") - countChar(t, \"}\");\n  const bracketDiff = countChar(t, \"[\") - countChar(t, \"]\");\n  if (braceDiff > 0) t += \"}\".repeat(braceDiff);\n  if (bracketDiff > 0) t += \"]\".repeat(bracketDiff);\n\n  try {\n    return JSON.parse(t);\n  } catch (e) {\n    return { _error: \"Invalid JSON\", _message: e.message, _raw: t };\n  }\n}\n\nconst items = $input.all();\n\nconst out = items.map((item) => {\n  const raw = item.json?.output ?? item.json ?? \"\";\n  const parsed = parseLooseJson(raw);\n  return { json: parsed }; // n8n expects an array of { json: ... }\n});\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        -256
+      ],
+      "id": "fbc93006-d069-4c04-a1bd-b97768b3cfb2",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "be0a8282-34db-44f5-9906-5086646a8bd0",
+              "leftValue": "={{ $json.available }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1072,
+        -256
+      ],
+      "id": "cfec8ac5-93fc-4b0f-a626-ff02b5f4c85d",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "resource": "calendar",
+        "calendar": {
+          "__rl": true,
+          "value": "sanjay.impactmindz@gmail.com",
+          "mode": "list",
+          "cachedResultName": "sanjay.impactmindz@gmail.com"
+        },
+        "timeMin": "={{ $json.time.start }}",
+        "timeMax": "={{ $json.time.end }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        1280,
+        -352
+      ],
+      "id": "27ecfd71-d645-4192-b00f-5d73c907183c",
+      "name": "Get availability in a calendar",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "fGTV6PKw1PpmtXo7",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "sanjay.impactmindz@gmail.com",
+          "mode": "list",
+          "cachedResultName": "sanjay.impactmindz@gmail.com"
+        },
+        "start": "={{ $('If').item.json.time.start }}",
+        "end": "={{ $('If').item.json.time.end }}",
+        "additionalFields": {
+          "conferenceDataUi": {
+            "conferenceDataValues": {
+              "conferenceSolution": "hangoutsMeet"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        1488,
+        -352
+      ],
+      "id": "a84cc0b3-3667-48d1-a600-e4c835c8be5a",
+      "name": "Create an event",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "fGTV6PKw1PpmtXo7",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=this is the starting time{{ $json.start.dateTime }}\nthis one is eht end time{{ $json.end.dateTime }}\nthis is the meeting url{{ $json.conferenceData.entryPoints[0].uri }}\n\nhere is the sender address\n{{ $('Gmail Trigger').item.json.from.value[0].address }}\ni give you the starting time end time and the meeting url and the sender address give me these all in human readable format with a date and all these are in json format that i can easily use with another node \nin output just give me the date start time end time and the sender email\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1696,
+        -352
+      ],
+      "id": "9008be10-0a94-4a79-a7f2-5e50bc7647e7",
+      "name": "AI Agent3"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1696,
+        -208
+      ],
+      "id": "4dff5fb8-9166-45ba-93c3-119705baa285",
+      "name": "OpenAI Chat Model3",
+      "credentials": {
+        "openAiApi": {
+          "id": "gjTRGbTZ19XxMc1J",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI-style JSON string -> object, then build ISO times for Calendar\nfunction parseLooseJson(input) {\n  let t = String(input ?? \"\").trim();\n\n  // strip code fences like ```json ... ```\n  t = t.replace(/```json/gi, \"\").replace(/```/g, \"\").trim();\n\n  // keep the largest {...} block\n  const s = t.indexOf(\"{\");\n  const e = t.lastIndexOf(\"}\");\n  if (s !== -1 && e !== -1 && e > s) t = t.slice(s, e + 1);\n\n  // remove trailing commas before } or ]\n  t = t.replace(/,\\s*([}\\]])/g, \"$1\");\n\n  // balance braces if truncated\n  const countChar = (s, ch) => { let n = 0; for (let i=0;i<s.length;i++) if (s[i] === ch) n++; return n; };\n  const braceDiff = countChar(t, \"{\") - countChar(t, \"}\");\n  if (braceDiff > 0) t += \"}\".repeat(braceDiff);\n\n  try { return JSON.parse(t); }\n  catch (e) { return { _error: \"Invalid JSON\", _message: e.message, _raw: t }; }\n}\n\nconst items = $input.all();\n\nconst out = items.map((item) => {\n  const raw = item.json?.output ?? \"\";\n  const data = parseLooseJson(raw);\n\n  // If fields exist, build ISO values for Calendar\n  if (data.date && data.start_time) {\n    const start = new Date(`${data.date} ${data.start_time}`);\n    data.start_iso = start.toISOString();\n    data.date_iso  = data.start_iso.slice(0, 10);\n  }\n  if (data.date && data.end_time) {\n    const end = new Date(`${data.date} ${data.end_time}`);\n    data.end_iso = end.toISOString();\n  }\n\n  return { json: data };\n});\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2048,
+        -352
+      ],
+      "id": "2eff72f0-5a43-4310-a7db-699e5176b5c7",
+      "name": "Code2"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.sender_email }}",
+        "subject": "Hr interview confirmation",
+        "emailType": "text",
+        "message": "=Hi {{ $json.sender_email }}\n\nThanks for scheduling the call. Here are the details:\n\n• Date: {{ $json.date }}\n• Time: {{ $json.start_time }} -{{ $json.end_time }}\n• Google Meet:{{ $('Create an event').item.json.conferenceData.entryPoints[0].uri }}\n\n\nIf you need to reschedule, just let me know. Talk soon!\n\nBest,\nHr\n",
+        "options": {
+          "replyToSenderOnly": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2304,
+        -288
+      ],
+      "id": "850391e1-1c02-475e-a79a-43566ffa43a6",
+      "name": "Send a message",
+      "webhookId": "7f0e5189-9009-40e3-a840-ef282e6f2d7d",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "yC1MzgF5TBPouvnH",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1oHCCAkOd20G-d4cSa5kr29IjUKwL4LerEKqLjddF5Ac",
+          "mode": "list",
+          "cachedResultName": "Resume Spreadsheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1oHCCAkOd20G-d4cSa5kr29IjUKwL4LerEKqLjddF5Ac/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 291796229,
+          "mode": "list",
+          "cachedResultName": "Interview Schedules",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1oHCCAkOd20G-d4cSa5kr29IjUKwL4LerEKqLjddF5Ac/edit#gid=291796229"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $('Gmail Trigger').item.json.from.value[0].name }}",
+            "Email": "={{ $('Gmail Trigger').item.json.from.value[0].address }}",
+            "Starting Time": "={{ $('Code2').item.json.start_time }}",
+            "End Time": "={{ $('Code2').item.json.end_time }}",
+            "date": "={{ $('Code2').item.json.date }}",
+            "Meet url": "={{ $('Create an event').item.json.conferenceData.entryPoints[0].uri }}",
+            "status": "Pending"
+          },
+          "matchingColumns": [
+            "Email"
+          ],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Starting Time",
+              "displayName": "Starting Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "End Time",
+              "displayName": "End Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Meet url",
+              "displayName": "Meet url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2512,
+        -288
+      ],
+      "id": "1480502d-8226-48a5-8329-207b4a9eb792",
+      "name": "Append or update row in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "tBqTKIlUOrAK4lWl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2240,
+        352
+      ],
+      "id": "15e7d1af-297c-4f62-8e2a-e1df27d9de1a",
+      "name": "Reply to a message2",
+      "webhookId": "a5ed4b76-cdad-498b-9353-56bb7d335855",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "yC1MzgF5TBPouvnH",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a message": {
+      "main": [
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload file": {
+      "main": [
+        []
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Reply to a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Reply to a message1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply to a message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Get a message1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get a message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a message1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent2": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Get availability in a calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get availability in a calendar": {
+      "main": [
+        [
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an event": {
+      "main": [
+        [
+          {
+            "node": "AI Agent3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent3": {
+      "main": [
+        [
+          {
+            "node": "Code2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent3",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code2": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "8f9acc39-ea7a-4a31-8409-4211a7bbae3d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d5aefde78ac47606c6b620ff9cbe91f7fd46e622c1cf56877dd56d229aa4d57f"
+  },
+  "id": "usay9psxV0AIZXeO",
+  "tags": []
+}
